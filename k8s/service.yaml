@@ -1,0 +1,36 @@
+# service.yaml — VoiceSpend Service K8s
+apiVersion: v1
+kind: Service
+metadata:
+  name: voicespend-api-service
+  namespace: voicespend-prod
+spec:
+  selector:
+    app: voicespend-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: ClusterIP
+
+---
+# Ingress — expose l'API via Nginx
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voicespend-ingress
+  namespace: voicespend-prod
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: api.voicespend.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: voicespend-api-service
+                port:
+                  number: 80

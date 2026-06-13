@@ -1,0 +1,87 @@
+// Jenkinsfile — VoiceSpend CI/CD Pipeline
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME   = 'voicespend-api'
+        DOCKER_HUB = 'kynn237/voicespend'
+        K8S_NS     = 'voicespend-prod'
+        NODE_ENV   = 'test'
+    }
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "Code récupéré depuis GitHub"
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir('backend') {
+                    sh 'npm ci'
+                    echo "Dépendances installées"
+                }
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                dir('backend') {
+                    sh 'npm test -- --coverage'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                script {
+                    dockerImage = docker.build(
+                        "${DOCKER_HUB}:${BUILD_NUMBER}",
+                        "./backend"
+                    )
+                }
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                script {
+                    docker.withRegistry('', 'dockerhub-credentials') {
+                        dockerImage.push("${BUILD_NUMBER}")
+                        dockerImage.push('latest')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh """
+                    kubectl set image deployment/voicespend-api \
+                        api=${DOCKER_HUB}:${BUILD_NUMBER} \
+                        -n ${K8S_NS}
+                    kubectl rollout status deployment/voicespend-api \
+                        -n ${K8S_NS}
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline réussi — VoiceSpend déployé !"
+        }
+        failure {
+            echo "Pipeline échoué — vérifier les logs"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
